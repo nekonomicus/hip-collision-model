@@ -1,0 +1,1622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hip Collision Model — Femoral Impingement Simulator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #111827;
+    --bg-panel: #1a2235;
+    --bg-card: #1e2a3f;
+    --border: #2a3a52;
+    --border-active: #3b82f6;
+    --text-primary: #e8edf5;
+    --text-secondary: #8b9ab8;
+    --text-muted: #5a6b85;
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-red: #ef4444;
+    --accent-green: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-purple: #8b5cf6;
+    --femur-color: #e8c170;
+    --pelvis-color: #a8b4c8;
+    --collision-color: #ef4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ─── Header ─── */
+  .header {
+    height: 48px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 100;
+  }
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-title .icon {
+    width: 24px; height: 24px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+  .header-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ─── Layout ─── */
+  .app-layout {
+    display: flex;
+    height: calc(100vh - 48px);
+  }
+
+  /* ─── Left Panel ─── */
+  .left-panel {
+    width: 300px;
+    min-width: 300px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .panel-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .panel-section-title .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+  }
+
+  /* Buttons */
+  .btn {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+  }
+  .btn:hover { border-color: var(--accent-blue); background: #1e2a40; }
+  .btn-primary {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: white;
+  }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-danger {
+    background: transparent;
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.1); }
+  .btn-success {
+    background: var(--accent-green);
+    border-color: var(--accent-green);
+    color: white;
+  }
+  .btn-success:hover { background: #059669; }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-small {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* File inputs */
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .file-label {
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 50px;
+  }
+  .file-name {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .file-status {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .file-status.loaded { background: var(--accent-green); }
+
+  /* Sliders */
+  .slider-group { margin-bottom: 8px; }
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .slider-label {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .slider-value {
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-cyan);
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    cursor: pointer;
+    border: 2px solid var(--bg-primary);
+  }
+
+  /* Info display */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .info-item {
+    background: var(--bg-panel);
+    border-radius: 4px;
+    padding: 6px 8px;
+  }
+  .info-item-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .info-item-value {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+  }
+  .info-item-value.collision {
+    color: var(--accent-red);
+  }
+  .info-item-value.safe {
+    color: var(--accent-green);
+  }
+
+  /* Collision indicator */
+  .collision-indicator {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.3s;
+    margin-top: 4px;
+  }
+  .collision-indicator.safe {
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    color: var(--accent-green);
+  }
+  .collision-indicator.colliding {
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.4);
+    color: var(--accent-red);
+    animation: pulse-red 1s ease infinite;
+  }
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.2); }
+    50% { box-shadow: 0 0 12px 2px rgba(239,68,68,0.3); }
+  }
+
+  /* ─── Main Area ─── */
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    height: 36px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: stretch;
+    padding: 0 8px;
+    gap: 2px;
+  }
+  .tab {
+    padding: 0 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+  }
+
+  /* Views */
+  .view-container {
+    flex: 1;
+    position: relative;
+  }
+  .view-3d, .view-selector {
+    position: absolute;
+    inset: 0;
+  }
+  .view-3d canvas, .view-selector canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .hidden { display: none !important; }
+
+  /* Selector layout: 3 orthogonal views */
+  .selector-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    height: 100%;
+    background: var(--border);
+  }
+  .selector-viewport {
+    position: relative;
+    background: var(--bg-primary);
+    overflow: hidden;
+  }
+  .selector-viewport canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .viewport-label {
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    z-index: 10;
+    background: rgba(10,14,23,0.7);
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+  .selector-instructions {
+    position: relative;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    text-align: center;
+    gap: 12px;
+  }
+  .selector-instructions h3 {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .selector-instructions p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .coord-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent-cyan);
+    background: var(--bg-panel);
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* Crosshair */
+  .crosshair {
+    position: absolute;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .crosshair-h, .crosshair-v {
+    position: absolute;
+    background: rgba(59, 130, 246, 0.5);
+  }
+  .crosshair-h {
+    height: 1px;
+    width: 100%;
+    left: 0;
+  }
+  .crosshair-v {
+    width: 1px;
+    height: 100%;
+    top: 0;
+  }
+  .crosshair-dot {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    border: 2px solid white;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px rgba(59,130,246,0.6);
+  }
+
+  /* ROM Map (bottom right in simulation) */
+  .rom-map-overlay {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(17,24,39,0.9);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+  }
+  .rom-map-overlay h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  /* Angle display overlay */
+  .angle-overlay {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(17,24,39,0.85);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    display: flex;
+    gap: 16px;
+  }
+  .angle-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .angle-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+  }
+  .angle-val {
+    color: var(--accent-cyan);
+    font-weight: 500;
+  }
+
+  /* Loading overlay */
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,14,23,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .loading-overlay.hidden { display: none; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* ROM scan progress */
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+    border-radius: 2px;
+    transition: width 0.1s;
+    width: 0%;
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay hidden" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="font-size: 13px; color: var(--text-secondary);" id="loadingText">Loading...</div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-title">
+    <div class="icon">⊕</div>
+    Hip Collision Model
+  </div>
+  <div class="header-status" id="statusText">Load STL files to begin</div>
+</div>
+
+<div class="app-layout">
+  <!-- Left Panel -->
+  <div class="left-panel">
+
+    <!-- File Loading -->
+    <div class="panel-section">
+      <div class="panel-section-title"><div class="dot"></div>STL Files</div>
+      <div class="file-row">
+        <div class="file-status" id="pelvisStatus"></div>
+        <div class="file-label">Pelvis</div>
+        <div class="file-name" id="pelvisName">No file loaded</div>
+      </div>
+      <button class="btn btn-small" onclick="document.getElementById('pelvisInput').click()">Load Pelvis STL</button>
+      <input type="file" id="pelvisInput" accept=".stl" style="display:none">
+
+      <div class="file-row" style="margin-top: 10px;">
+        <div class="file-status" id="femurStatus"></div>
+        <div class="file-label">Femur</div>
+        <div class="file-name" id="femurName">No file loaded</div>
+      </div>
+      <button class="btn btn-small" onclick="document.getElementById('femurInput').click()">Load Femur STL</button>
+      <input type="file" id="femurInput" accept=".stl" style="display:none">
+    </div>
+
+    <!-- Head Center Selection -->
+    <div class="panel-section">
+      <div class="panel-section-title"><div class="dot" style="background:var(--accent-cyan)"></div>Femoral Head Center</div>
+      <p style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">
+        Switch to <strong>Select Center</strong> tab. Click on each orthogonal view to define the rotation center.
+      </p>
+      <div class="coord-display" id="centerCoords">Center: not set</div>
+      <button class="btn btn-small" style="margin-top:8px;" id="btnResetCenter" disabled onclick="resetCenter()">Reset Center</button>
+    </div>
+
+    <!-- Motion Controls -->
+    <div class="panel-section">
+      <div class="panel-section-title"><div class="dot" style="background:var(--accent-amber)"></div>Femoral Motion</div>
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Flexion / Extension</span>
+          <span class="slider-value" id="flexVal">0°</span>
+        </div>
+        <input type="range" id="sliderFlex" min="-30" max="140" value="0" step="1">
+      </div>
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Abduction / Adduction</span>
+          <span class="slider-value" id="abdVal">0°</span>
+        </div>
+        <input type="range" id="sliderAbd" min="-45" max="60" value="0" step="1">
+      </div>
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Internal / External Rotation</span>
+          <span class="slider-value" id="rotVal">0°</span>
+        </div>
+        <input type="range" id="sliderRot" min="-60" max="60" value="0" step="1">
+      </div>
+      <button class="btn btn-small" onclick="resetAngles()">Reset to Neutral</button>
+    </div>
+
+    <!-- Collision Status -->
+    <div class="panel-section">
+      <div class="panel-section-title"><div class="dot" style="background:var(--accent-red)"></div>Collision Detection</div>
+      <div class="collision-indicator safe" id="collisionIndicator">NO COLLISION</div>
+      <div class="info-grid" style="margin-top:8px;">
+        <div class="info-item">
+          <div class="info-item-label">Min Dist</div>
+          <div class="info-item-value" id="minDist">—</div>
+        </div>
+        <div class="info-item">
+          <div class="info-item-label">Intersections</div>
+          <div class="info-item-value" id="numIntersect">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROM Scan -->
+    <div class="panel-section">
+      <div class="panel-section-title"><div class="dot" style="background:var(--accent-purple)"></div>ROM Scan</div>
+      <p style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">
+        Sweep flexion/extension vs int/ext rotation at current abduction to map impingement zones.
+      </p>
+      <button class="btn btn-small btn-primary" id="btnScanROM" onclick="scanROM()" disabled>Run ROM Scan</button>
+      <div class="progress-bar" id="scanProgress" style="display:none;">
+        <div class="progress-fill" id="scanProgressFill"></div>
+      </div>
+    </div>
+
+    <!-- Display Options -->
+    <div class="panel-section">
+      <div class="panel-section-title"><div class="dot" style="background:var(--accent-green)"></div>Display</div>
+      <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:6px;">
+        <input type="checkbox" id="chkWireframe"> Wireframe overlay
+      </label>
+      <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:6px;">
+        <input type="checkbox" id="chkTransparent"> Transparent pelvis
+      </label>
+      <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="chkShowCenter" checked> Show rotation center
+      </label>
+    </div>
+  </div>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <div class="tab-bar">
+      <button class="tab active" id="tabSimulation" onclick="switchTab('simulation')">Simulation</button>
+      <button class="tab" id="tabSelector" onclick="switchTab('selector')">Select Center</button>
+    </div>
+    <div class="view-container">
+      <!-- 3D Simulation View -->
+      <div class="view-3d" id="viewSimulation">
+        <div id="renderer3d" style="width:100%;height:100%;"></div>
+        <div class="angle-overlay" id="angleOverlay">
+          <div class="angle-item">
+            <span class="angle-label">Flex/Ext</span>
+            <span class="angle-val" id="aoFlex">0°</span>
+          </div>
+          <div class="angle-item">
+            <span class="angle-label">Abd/Add</span>
+            <span class="angle-val" id="aoAbd">0°</span>
+          </div>
+          <div class="angle-item">
+            <span class="angle-label">Int/Ext Rot</span>
+            <span class="angle-val" id="aoRot">0°</span>
+          </div>
+        </div>
+        <canvas id="romCanvas" width="200" height="200" style="position:absolute;bottom:16px;right:16px;background:rgba(17,24,39,0.85);border:1px solid var(--border);border-radius:8px;z-index:10;display:none;"></canvas>
+      </div>
+      <!-- Center Selector View -->
+      <div class="view-selector hidden" id="viewSelector">
+        <div class="selector-layout">
+          <div class="selector-viewport" id="vpCoronal">
+            <div class="viewport-label">Coronal (Front)</div>
+            <div class="crosshair hidden" id="chCoronal">
+              <div class="crosshair-h"></div>
+              <div class="crosshair-v"></div>
+              <div class="crosshair-dot"></div>
+            </div>
+          </div>
+          <div class="selector-viewport" id="vpSagittal">
+            <div class="viewport-label">Sagittal (Side)</div>
+            <div class="crosshair hidden" id="chSagittal">
+              <div class="crosshair-h"></div>
+              <div class="crosshair-v"></div>
+              <div class="crosshair-dot"></div>
+            </div>
+          </div>
+          <div class="selector-viewport" id="vpAxial">
+            <div class="viewport-label">Axial (Top)</div>
+            <div class="crosshair hidden" id="chAxial">
+              <div class="crosshair-h"></div>
+              <div class="crosshair-v"></div>
+              <div class="crosshair-dot"></div>
+            </div>
+          </div>
+          <div class="selector-instructions">
+            <h3>Define Rotation Center</h3>
+            <p>Click on each view to set the femoral head center coordinates. The coronal view sets X/Y, sagittal sets Z/Y, axial sets X/Z.</p>
+            <div class="coord-display" id="selectorCoords">X: — &nbsp; Y: — &nbsp; Z: —</div>
+            <button class="btn btn-primary btn-small" id="btnConfirmCenter" onclick="confirmCenter()" disabled>Confirm Center</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const state = {
+  pelvisMesh: null,
+  femurMesh: null,
+  femurOrigGeo: null,
+  pelvisOrigGeo: null,
+  centerSet: false,
+  center: new THREE.Vector3(),
+  angles: { flex: 0, abd: 0, rot: 0 },
+  selectorClicks: { coronal: null, sagittal: null, axial: null },
+  collisionResult: { colliding: false, minDist: Infinity, count: 0 },
+  romData: null,
+  scanning: false,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// THREE.JS SETUP — Main 3D View
+// ═══════════════════════════════════════════════════════════════
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e17);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+camera.position.set(0, 0, 400);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+document.getElementById('renderer3d').appendChild(renderer.domElement);
+
+// Lights
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight1.position.set(100, 200, 150);
+scene.add(dirLight1);
+const dirLight2 = new THREE.DirectionalLight(0x8888ff, 0.3);
+dirLight2.position.set(-100, -50, -100);
+scene.add(dirLight2);
+
+// Center marker
+const centerMarkerGeo = new THREE.SphereGeometry(3, 16, 16);
+const centerMarkerMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+const centerMarker = new THREE.Mesh(centerMarkerGeo, centerMarkerMat);
+centerMarker.visible = false;
+scene.add(centerMarker);
+
+// Axes helper at center
+const axesGroup = new THREE.Group();
+scene.add(axesGroup);
+axesGroup.visible = false;
+
+function createAxisLine(dir, color, len = 30) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(), dir.clone().multiplyScalar(len)
+  ]);
+  const mat = new THREE.LineBasicMaterial({ color });
+  return new THREE.Line(geo, mat);
+}
+
+// Femur pivot group
+const femurPivot = new THREE.Group();
+scene.add(femurPivot);
+
+// ═══════════════════════════════════════════════════════════════
+// OrbitControls (inline minimal implementation)
+// ═══════════════════════════════════════════════════════════════
+class SimpleOrbitControls {
+  constructor(camera, domElement) {
+    this.camera = camera;
+    this.domElement = domElement;
+    this.target = new THREE.Vector3();
+    this.spherical = new THREE.Spherical();
+    this.sphericalDelta = new THREE.Spherical();
+    this.panOffset = new THREE.Vector3();
+    this.rotateSpeed = 0.8;
+    this.zoomSpeed = 1.2;
+    this.panSpeed = 0.8;
+    this.isRotating = false;
+    this.isPanning = false;
+    this.startMouse = { x: 0, y: 0 };
+
+    const offset = new THREE.Vector3().copy(camera.position).sub(this.target);
+    this.spherical.setFromVector3(offset);
+
+    domElement.addEventListener('mousedown', e => this.onMouseDown(e));
+    domElement.addEventListener('mousemove', e => this.onMouseMove(e));
+    domElement.addEventListener('mouseup', () => this.onMouseUp());
+    domElement.addEventListener('wheel', e => this.onWheel(e), { passive: false });
+    domElement.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  onMouseDown(e) {
+    if (e.button === 0) this.isRotating = true;
+    if (e.button === 2) this.isPanning = true;
+    this.startMouse = { x: e.clientX, y: e.clientY };
+  }
+
+  onMouseMove(e) {
+    const dx = e.clientX - this.startMouse.x;
+    const dy = e.clientY - this.startMouse.y;
+    this.startMouse = { x: e.clientX, y: e.clientY };
+
+    if (this.isRotating) {
+      this.spherical.theta -= dx * 0.005 * this.rotateSpeed;
+      this.spherical.phi -= dy * 0.005 * this.rotateSpeed;
+      this.spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, this.spherical.phi));
+    }
+    if (this.isPanning) {
+      const el = this.domElement;
+      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1);
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0);
+      const factor = this.spherical.radius * 0.002 * this.panSpeed;
+      this.target.add(right.multiplyScalar(-dx * factor));
+      this.target.add(up.multiplyScalar(dy * factor));
+    }
+  }
+
+  onMouseUp() { this.isRotating = false; this.isPanning = false; }
+
+  onWheel(e) {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.1 : 0.9;
+    this.spherical.radius *= factor;
+    this.spherical.radius = Math.max(10, Math.min(3000, this.spherical.radius));
+  }
+
+  update() {
+    const offset = new THREE.Vector3().setFromSpherical(this.spherical);
+    this.camera.position.copy(this.target).add(offset);
+    this.camera.lookAt(this.target);
+  }
+}
+
+let controls;
+
+// ═══════════════════════════════════════════════════════════════
+// STL PARSER
+// ═══════════════════════════════════════════════════════════════
+function parseSTL(buffer) {
+  const view = new DataView(buffer);
+  // Check if binary
+  const faceCount = view.getUint32(80, true);
+  const expectedSize = 80 + 4 + faceCount * 50;
+
+  if (Math.abs(buffer.byteLength - expectedSize) < 10) {
+    return parseBinarySTL(view, faceCount);
+  } else {
+    return parseASCIISTL(buffer);
+  }
+}
+
+function parseBinarySTL(view, faceCount) {
+  const positions = new Float32Array(faceCount * 9);
+  const normals = new Float32Array(faceCount * 9);
+  let offset = 84;
+
+  for (let i = 0; i < faceCount; i++) {
+    const nx = view.getFloat32(offset, true); offset += 4;
+    const ny = view.getFloat32(offset, true); offset += 4;
+    const nz = view.getFloat32(offset, true); offset += 4;
+
+    for (let v = 0; v < 3; v++) {
+      positions[i * 9 + v * 3 + 0] = view.getFloat32(offset, true); offset += 4;
+      positions[i * 9 + v * 3 + 1] = view.getFloat32(offset, true); offset += 4;
+      positions[i * 9 + v * 3 + 2] = view.getFloat32(offset, true); offset += 4;
+      normals[i * 9 + v * 3 + 0] = nx;
+      normals[i * 9 + v * 3 + 1] = ny;
+      normals[i * 9 + v * 3 + 2] = nz;
+    }
+    offset += 2; // attribute byte count
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.computeBoundingSphere();
+  geo.computeBoundingBox();
+  return geo;
+}
+
+function parseASCIISTL(buffer) {
+  const text = new TextDecoder().decode(buffer);
+  const positions = [];
+  const normals = [];
+  const faceRegex = /facet\s+normal\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+outer\s+loop\s+vertex\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+vertex\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+vertex\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)/g;
+  let match;
+
+  while ((match = faceRegex.exec(text)) !== null) {
+    const nx = parseFloat(match[1]), ny = parseFloat(match[2]), nz = parseFloat(match[3]);
+    for (let v = 0; v < 3; v++) {
+      positions.push(parseFloat(match[4 + v * 3]), parseFloat(match[5 + v * 3]), parseFloat(match[6 + v * 3]));
+      normals.push(nx, ny, nz);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+  geo.computeBoundingSphere();
+  geo.computeBoundingBox();
+  return geo;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILE LOADING
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('pelvisInput').addEventListener('change', e => loadSTL(e, 'pelvis'));
+document.getElementById('femurInput').addEventListener('change', e => loadSTL(e, 'femur'));
+
+function loadSTL(event, type) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  showLoading(`Loading ${type}...`);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const geometry = parseSTL(e.target.result);
+    geometry.computeVertexNormals();
+
+    if (type === 'pelvis') {
+      if (state.pelvisMesh) scene.remove(state.pelvisMesh);
+      const mat = new THREE.MeshPhongMaterial({
+        color: 0xa8b4c8,
+        specular: 0x222233,
+        shininess: 30,
+        transparent: false,
+        opacity: 1,
+        side: THREE.DoubleSide,
+      });
+      state.pelvisMesh = new THREE.Mesh(geometry, mat);
+      state.pelvisOrigGeo = geometry.clone();
+      scene.add(state.pelvisMesh);
+      document.getElementById('pelvisStatus').classList.add('loaded');
+      document.getElementById('pelvisName').textContent = file.name;
+    } else {
+      if (state.femurMesh) femurPivot.remove(state.femurMesh);
+      const mat = new THREE.MeshPhongMaterial({
+        color: 0xe8c170,
+        specular: 0x333322,
+        shininess: 40,
+        side: THREE.DoubleSide,
+      });
+      state.femurMesh = new THREE.Mesh(geometry, mat);
+      state.femurOrigGeo = geometry.clone();
+      femurPivot.add(state.femurMesh);
+      document.getElementById('femurStatus').classList.add('loaded');
+      document.getElementById('femurName').textContent = file.name;
+    }
+
+    // Auto-frame
+    if (state.pelvisMesh || state.femurMesh) {
+      const box = new THREE.Box3();
+      if (state.pelvisMesh) box.expandByObject(state.pelvisMesh);
+      if (state.femurMesh) box.expandByObject(state.femurMesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3()).length();
+      controls.target.copy(center);
+      controls.spherical.radius = size * 1.2;
+    }
+
+    updateSelectorViews();
+    updateStatus();
+    hideLoading();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SELECTOR VIEWS (Orthogonal projections)
+// ═══════════════════════════════════════════════════════════════
+const selectorRenderers = {};
+const selectorScenes = {};
+const selectorCameras = {};
+
+function initSelectorView(id, direction) {
+  const container = document.getElementById(id);
+  const existingCanvas = container.querySelector('canvas');
+  if (existingCanvas) container.removeChild(existingCanvas);
+
+  const r = new THREE.WebGLRenderer({ antialias: true });
+  r.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(r.domElement);
+
+  const s = new THREE.Scene();
+  s.background = new THREE.Color(0x0a0e17);
+  s.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.7);
+  dl.position.copy(direction).multiplyScalar(500);
+  s.add(dl);
+
+  const cam = new THREE.OrthographicCamera(-100, 100, 100, -100, -5000, 5000);
+  cam.position.copy(direction).multiplyScalar(500);
+  cam.lookAt(0, 0, 0);
+  cam.up.set(0, 1, 0);
+  if (id === 'vpAxial') cam.up.set(0, 0, -1);
+
+  selectorRenderers[id] = r;
+  selectorScenes[id] = s;
+  selectorCameras[id] = cam;
+
+  // Click handler
+  r.domElement.addEventListener('click', e => onSelectorClick(e, id));
+
+  return { r, s, cam };
+}
+
+function updateSelectorViews() {
+  const viewConfigs = {
+    vpCoronal: new THREE.Vector3(0, 0, 1),   // front: XY plane
+    vpSagittal: new THREE.Vector3(1, 0, 0),  // side: ZY plane
+    vpAxial: new THREE.Vector3(0, 1, 0),      // top: XZ plane
+  };
+
+  for (const [id, dir] of Object.entries(viewConfigs)) {
+    if (!selectorRenderers[id]) {
+      initSelectorView(id, dir);
+    }
+
+    const s = selectorScenes[id];
+    // Remove old meshes
+    s.children = s.children.filter(c => c.type === 'AmbientLight' || c.type === 'DirectionalLight');
+
+    if (state.pelvisMesh) {
+      const m = new THREE.Mesh(
+        state.pelvisOrigGeo.clone(),
+        new THREE.MeshPhongMaterial({ color: 0xa8b4c8, side: THREE.DoubleSide })
+      );
+      s.add(m);
+    }
+    if (state.femurMesh) {
+      const m = new THREE.Mesh(
+        state.femurOrigGeo.clone(),
+        new THREE.MeshPhongMaterial({ color: 0xe8c170, side: THREE.DoubleSide })
+      );
+      s.add(m);
+    }
+
+    // Fit camera
+    const box = new THREE.Box3();
+    s.children.forEach(c => { if (c.isMesh) box.expandByObject(c); });
+    if (!box.isEmpty()) {
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) * 0.6;
+      const cam = selectorCameras[id];
+      cam.left = -maxDim; cam.right = maxDim;
+      cam.top = maxDim; cam.bottom = -maxDim;
+
+      // Position camera looking from direction
+      cam.position.copy(dir).multiplyScalar(500).add(center);
+      cam.lookAt(center);
+      cam.updateProjectionMatrix();
+    }
+  }
+}
+
+function onSelectorClick(event, viewId) {
+  if (!state.pelvisMesh && !state.femurMesh) return;
+
+  const r = selectorRenderers[viewId];
+  const cam = selectorCameras[viewId];
+  const rect = r.domElement.getBoundingClientRect();
+  const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  // Convert NDC to world coordinates using orthographic camera
+  const worldPos = new THREE.Vector3(ndcX, ndcY, 0).unproject(cam);
+
+  // Map view ID to which coordinates are set
+  const pixelX = event.clientX - rect.left;
+  const pixelY = event.clientY - rect.top;
+
+  let viewKey;
+  if (viewId === 'vpCoronal') {
+    viewKey = 'coronal';
+    state.selectorClicks.coronal = { x: worldPos.x, y: worldPos.y, px: pixelX, py: pixelY };
+  } else if (viewId === 'vpSagittal') {
+    viewKey = 'sagittal';
+    state.selectorClicks.sagittal = { z: worldPos.z, y: worldPos.y, px: pixelX, py: pixelY };
+  } else if (viewId === 'vpAxial') {
+    viewKey = 'axial';
+    state.selectorClicks.axial = { x: worldPos.x, z: worldPos.z, px: pixelX, py: pixelY };
+  }
+
+  // Show crosshair
+  const chId = 'ch' + viewKey.charAt(0).toUpperCase() + viewKey.slice(1);
+  const ch = document.getElementById(chId);
+  ch.classList.remove('hidden');
+  ch.querySelector('.crosshair-h').style.top = pixelY + 'px';
+  ch.querySelector('.crosshair-v').style.left = pixelX + 'px';
+  ch.querySelector('.crosshair-dot').style.top = pixelY + 'px';
+  ch.querySelector('.crosshair-dot').style.left = pixelX + 'px';
+
+  updateSelectorCoords();
+}
+
+function updateSelectorCoords() {
+  const c = state.selectorClicks;
+  let xStr = '—', yStr = '—', zStr = '—';
+
+  // Gather best coords: coronal gives X,Y; sagittal gives Z,Y; axial gives X,Z
+  let xVals = [], yVals = [], zVals = [];
+  if (c.coronal) { xVals.push(c.coronal.x); yVals.push(c.coronal.y); }
+  if (c.sagittal) { zVals.push(c.sagittal.z); yVals.push(c.sagittal.y); }
+  if (c.axial) { xVals.push(c.axial.x); zVals.push(c.axial.z); }
+
+  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  const xAvg = avg(xVals), yAvg = avg(yVals), zAvg = avg(zVals);
+
+  if (xAvg !== null) xStr = xAvg.toFixed(1);
+  if (yAvg !== null) yStr = yAvg.toFixed(1);
+  if (zAvg !== null) zStr = zAvg.toFixed(1);
+
+  document.getElementById('selectorCoords').textContent = `X: ${xStr}  Y: ${yStr}  Z: ${zStr}`;
+
+  // Enable confirm if at least 2 views clicked (need all 3 coords)
+  const hasAll = xAvg !== null && yAvg !== null && zAvg !== null;
+  document.getElementById('btnConfirmCenter').disabled = !hasAll;
+}
+
+function confirmCenter() {
+  const c = state.selectorClicks;
+  let xVals = [], yVals = [], zVals = [];
+  if (c.coronal) { xVals.push(c.coronal.x); yVals.push(c.coronal.y); }
+  if (c.sagittal) { zVals.push(c.sagittal.z); yVals.push(c.sagittal.y); }
+  if (c.axial) { xVals.push(c.axial.x); zVals.push(c.axial.z); }
+
+  const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+  state.center.set(avg(xVals), avg(yVals), avg(zVals));
+  state.centerSet = true;
+
+  // Move pivot
+  femurPivot.position.copy(state.center);
+  if (state.femurMesh) {
+    state.femurMesh.position.copy(state.center).negate();
+  }
+
+  centerMarker.position.copy(state.center);
+  centerMarker.visible = true;
+
+  // Axes at center
+  axesGroup.position.copy(state.center);
+  axesGroup.children = [];
+  axesGroup.add(createAxisLine(new THREE.Vector3(1, 0, 0), 0xff4444));
+  axesGroup.add(createAxisLine(new THREE.Vector3(0, 1, 0), 0x44ff44));
+  axesGroup.add(createAxisLine(new THREE.Vector3(0, 0, 1), 0x4444ff));
+  axesGroup.visible = true;
+
+  document.getElementById('centerCoords').textContent =
+    `Center: (${state.center.x.toFixed(1)}, ${state.center.y.toFixed(1)}, ${state.center.z.toFixed(1)})`;
+  document.getElementById('btnResetCenter').disabled = false;
+  document.getElementById('btnScanROM').disabled = false;
+
+  switchTab('simulation');
+  updateStatus();
+}
+
+function resetCenter() {
+  state.centerSet = false;
+  state.center.set(0, 0, 0);
+  state.selectorClicks = { coronal: null, sagittal: null, axial: null };
+  centerMarker.visible = false;
+  axesGroup.visible = false;
+  femurPivot.position.set(0, 0, 0);
+  if (state.femurMesh) state.femurMesh.position.set(0, 0, 0);
+  femurPivot.rotation.set(0, 0, 0);
+
+  document.getElementById('centerCoords').textContent = 'Center: not set';
+  document.getElementById('btnResetCenter').disabled = true;
+  document.getElementById('btnScanROM').disabled = true;
+
+  ['chCoronal', 'chSagittal', 'chAxial'].forEach(id =>
+    document.getElementById(id).classList.add('hidden'));
+  updateSelectorCoords();
+  updateStatus();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MOTION & COLLISION
+// ═══════════════════════════════════════════════════════════════
+function applyFemurRotation(flexDeg, abdDeg, rotDeg) {
+  if (!state.centerSet || !state.femurMesh) return;
+
+  const flexRad = THREE.MathUtils.degToRad(flexDeg);
+  const abdRad = THREE.MathUtils.degToRad(abdDeg);
+  const rotRad = THREE.MathUtils.degToRad(rotDeg);
+
+  // Clinical rotation order: flexion (around X), abduction (around Z), internal rotation (around Y)
+  const euler = new THREE.Euler(flexRad, rotRad, abdRad, 'XYZ');
+  femurPivot.rotation.copy(euler);
+}
+
+// Simplified collision detection using bounding sphere sampling
+function checkCollision() {
+  if (!state.pelvisMesh || !state.femurMesh || !state.centerSet) {
+    updateCollisionUI(false, Infinity, 0);
+    return false;
+  }
+
+  // Get world-space positions of femur vertices (sampled)
+  const femurGeo = state.femurMesh.geometry;
+  const pelvisGeo = state.pelvisMesh.geometry;
+
+  const femurPos = femurGeo.attributes.position;
+  const pelvisPos = pelvisGeo.attributes.position;
+
+  // Build pelvis bounding structures
+  // Use simple raycasting: sample femur surface points and check if inside pelvis
+  const femurWorldMatrix = state.femurMesh.matrixWorld;
+  const pelvisWorldMatrix = state.pelvisMesh.matrixWorld;
+  const pelvisInverse = new THREE.Matrix4().copy(pelvisWorldMatrix).invert();
+
+  // Transform femur-to-pelvis space matrix
+  const femurToPelvis = new THREE.Matrix4().copy(pelvisInverse).multiply(femurWorldMatrix);
+
+  // Sample femur vertices in pelvis space and check against pelvis bounding box
+  state.pelvisMesh.geometry.computeBoundingBox();
+  const pBox = state.pelvisMesh.geometry.boundingBox;
+
+  // Expand bounding box slightly for proximity detection
+  const proximity = 2.0; // mm threshold
+  const expandedBox = pBox.clone().expandByScalar(proximity);
+
+  let insideCount = 0;
+  let minDist = Infinity;
+  const step = Math.max(1, Math.floor(femurPos.count / 2000)); // Sample ~2000 points
+
+  const v = new THREE.Vector3();
+  const closestOnBox = new THREE.Vector3();
+
+  for (let i = 0; i < femurPos.count; i += step) {
+    v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
+    v.applyMatrix4(femurToPelvis);
+
+    // Check if inside expanded bounding box
+    if (expandedBox.containsPoint(v)) {
+      // More precise: distance to box surface
+      pBox.clampPoint(v, closestOnBox);
+      const dist = v.distanceTo(closestOnBox);
+
+      if (pBox.containsPoint(v)) {
+        insideCount++;
+        minDist = Math.min(minDist, -dist); // Negative = penetration
+      } else {
+        minDist = Math.min(minDist, dist);
+      }
+    }
+  }
+
+  // More precise collision: use raycasting on sampled points
+  // For performance, use the bounding box approach as primary,
+  // then refine with mesh-based raycasting on nearby points
+  if (insideCount > 0 || minDist < proximity) {
+    // Refine with actual mesh raycasting
+    const raycaster = new THREE.Raycaster();
+    let refinedCollisions = 0;
+    const testStep = Math.max(1, Math.floor(femurPos.count / 500));
+
+    for (let i = 0; i < femurPos.count; i += testStep) {
+      v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
+      v.applyMatrix4(state.femurMesh.matrixWorld);
+
+      // Cast ray from this point toward pelvis center
+      const dir = new THREE.Vector3();
+      pBox.getCenter(dir).applyMatrix4(pelvisWorldMatrix);
+      dir.sub(v).normalize();
+
+      raycaster.set(v, dir);
+      raycaster.far = proximity * 3;
+      const hits = raycaster.intersectObject(state.pelvisMesh);
+      if (hits.length > 0) {
+        refinedCollisions++;
+        minDist = Math.min(minDist, hits[0].distance);
+        if (hits.length >= 2) {
+          // Point is likely inside mesh
+          minDist = Math.min(minDist, -hits[0].distance);
+        }
+      }
+    }
+
+    const colliding = refinedCollisions > 3;
+    updateCollisionUI(colliding, Math.abs(minDist), refinedCollisions);
+    return colliding;
+  }
+
+  updateCollisionUI(false, minDist === Infinity ? NaN : minDist, 0);
+  return false;
+}
+
+function updateCollisionUI(colliding, minDist, count) {
+  state.collisionResult = { colliding, minDist, count };
+  const ind = document.getElementById('collisionIndicator');
+  if (colliding) {
+    ind.textContent = '⚠ COLLISION DETECTED';
+    ind.className = 'collision-indicator colliding';
+    if (state.femurMesh) state.femurMesh.material.emissive.setHex(0x331100);
+  } else {
+    ind.textContent = 'NO COLLISION';
+    ind.className = 'collision-indicator safe';
+    if (state.femurMesh) state.femurMesh.material.emissive.setHex(0x000000);
+  }
+  document.getElementById('minDist').textContent = isNaN(minDist) ? '—' : minDist.toFixed(1) + ' mm';
+  document.getElementById('minDist').className = 'info-item-value ' + (colliding ? 'collision' : 'safe');
+  document.getElementById('numIntersect').textContent = count;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDERS
+// ═══════════════════════════════════════════════════════════════
+['sliderFlex', 'sliderAbd', 'sliderRot'].forEach(id => {
+  document.getElementById(id).addEventListener('input', onSliderChange);
+});
+
+function onSliderChange() {
+  const flex = parseInt(document.getElementById('sliderFlex').value);
+  const abd = parseInt(document.getElementById('sliderAbd').value);
+  const rot = parseInt(document.getElementById('sliderRot').value);
+
+  state.angles = { flex, abd, rot };
+
+  document.getElementById('flexVal').textContent = flex + '°';
+  document.getElementById('abdVal').textContent = abd + '°';
+  document.getElementById('rotVal').textContent = rot + '°';
+  document.getElementById('aoFlex').textContent = flex + '°';
+  document.getElementById('aoAbd').textContent = abd + '°';
+  document.getElementById('aoRot').textContent = rot + '°';
+
+  applyFemurRotation(flex, abd, rot);
+  checkCollision();
+}
+
+function resetAngles() {
+  document.getElementById('sliderFlex').value = 0;
+  document.getElementById('sliderAbd').value = 0;
+  document.getElementById('sliderRot').value = 0;
+  onSliderChange();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ROM SCAN
+// ═══════════════════════════════════════════════════════════════
+async function scanROM() {
+  if (!state.centerSet || !state.pelvisMesh || !state.femurMesh || state.scanning) return;
+  state.scanning = true;
+
+  const btn = document.getElementById('btnScanROM');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  const progBar = document.getElementById('scanProgress');
+  const progFill = document.getElementById('scanProgressFill');
+  progBar.style.display = 'block';
+
+  const abd = state.angles.abd;
+  const flexRange = [-30, 140];
+  const rotRange = [-60, 60];
+  const step = 5;
+  const romMap = [];
+  const totalSteps = ((flexRange[1] - flexRange[0]) / step + 1) * ((rotRange[1] - rotRange[0]) / step + 1);
+  let currentStep = 0;
+
+  for (let f = flexRange[0]; f <= flexRange[1]; f += step) {
+    const row = [];
+    for (let r = rotRange[0]; r <= rotRange[1]; r += step) {
+      applyFemurRotation(f, abd, r);
+      scene.updateMatrixWorld(true);
+
+      const colliding = quickCollisionCheck();
+      row.push(colliding ? 1 : 0);
+      currentStep++;
+      progFill.style.width = (currentStep / totalSteps * 100) + '%';
+
+      if (currentStep % 20 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0)); // Yield to UI
+      }
+    }
+    romMap.push(row);
+  }
+
+  state.romData = { map: romMap, flexRange, rotRange, step, abd };
+  drawROMMap();
+
+  // Restore current angle
+  applyFemurRotation(state.angles.flex, state.angles.abd, state.angles.rot);
+  checkCollision();
+
+  state.scanning = false;
+  btn.disabled = false;
+  btn.textContent = 'Run ROM Scan';
+  progBar.style.display = 'none';
+}
+
+function quickCollisionCheck() {
+  // Fast bounding-box based collision
+  if (!state.pelvisMesh || !state.femurMesh) return false;
+
+  const femurGeo = state.femurMesh.geometry;
+  const femurPos = femurGeo.attributes.position;
+  const pelvisWorldMatrix = state.pelvisMesh.matrixWorld;
+  const pelvisInverse = new THREE.Matrix4().copy(pelvisWorldMatrix).invert();
+  const femurToPelvis = new THREE.Matrix4().copy(pelvisInverse).multiply(state.femurMesh.matrixWorld);
+
+  state.pelvisMesh.geometry.computeBoundingBox();
+  const pBox = state.pelvisMesh.geometry.boundingBox;
+
+  const step = Math.max(1, Math.floor(femurPos.count / 300));
+  const v = new THREE.Vector3();
+  let insideCount = 0;
+
+  for (let i = 0; i < femurPos.count; i += step) {
+    v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
+    v.applyMatrix4(femurToPelvis);
+    if (pBox.containsPoint(v)) insideCount++;
+    if (insideCount > 2) return true;
+  }
+  return false;
+}
+
+function drawROMMap() {
+  const canvas = document.getElementById('romCanvas');
+  canvas.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  const data = state.romData;
+  const rows = data.map.length;
+  const cols = data.map[0].length;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const pad = 30;
+  const plotW = w - pad * 2;
+  const plotH = h - pad * 2;
+
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, w, h);
+
+  // Draw cells
+  const cellW = plotW / cols;
+  const cellH = plotH / rows;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const val = data.map[r][c];
+      ctx.fillStyle = val ? 'rgba(239,68,68,0.7)' : 'rgba(16,185,129,0.3)';
+      ctx.fillRect(pad + c * cellW, pad + r * cellH, cellW - 0.5, cellH - 0.5);
+    }
+  }
+
+  // Current position marker
+  const flexIdx = (state.angles.flex - data.flexRange[0]) / data.step;
+  const rotIdx = (state.angles.rot - data.rotRange[0]) / data.step;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(pad + rotIdx * cellW + cellW / 2, pad + flexIdx * cellH + cellH / 2, 4, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#8b9ab8';
+  ctx.font = '9px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Int/Ext Rotation', w / 2, h - 4);
+  ctx.save();
+  ctx.translate(8, h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Flex/Ext', 0, 0);
+  ctx.restore();
+
+  // Range labels
+  ctx.font = '8px "JetBrains Mono", monospace';
+  ctx.fillText(data.rotRange[0] + '°', pad, pad - 4);
+  ctx.fillText(data.rotRange[1] + '°', w - pad, pad - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(data.flexRange[0] + '°', pad - 4, pad + 8);
+  ctx.fillText(data.flexRange[1] + '°', pad - 4, h - pad);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e8edf5';
+  ctx.font = '10px "DM Sans", sans-serif';
+  ctx.fillText(`ROM Map (Abd: ${data.abd}°)`, w / 2, 12);
+
+  // Legend
+  ctx.fillStyle = 'rgba(239,68,68,0.7)';
+  ctx.fillRect(w - 75, h - 18, 8, 8);
+  ctx.fillStyle = 'rgba(16,185,129,0.3)';
+  ctx.fillRect(w - 75, h - 28, 8, 8);
+  ctx.fillStyle = '#8b9ab8';
+  ctx.textAlign = 'left';
+  ctx.font = '8px "DM Sans", sans-serif';
+  ctx.fillText('Collision', w - 64, h - 11);
+  ctx.fillText('Free', w - 64, h - 21);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DISPLAY OPTIONS
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('chkWireframe').addEventListener('change', e => {
+  if (state.pelvisMesh) state.pelvisMesh.material.wireframe = e.target.checked;
+  if (state.femurMesh) state.femurMesh.material.wireframe = e.target.checked;
+});
+
+document.getElementById('chkTransparent').addEventListener('change', e => {
+  if (state.pelvisMesh) {
+    state.pelvisMesh.material.transparent = e.target.checked;
+    state.pelvisMesh.material.opacity = e.target.checked ? 0.4 : 1.0;
+    state.pelvisMesh.material.needsUpdate = true;
+  }
+});
+
+document.getElementById('chkShowCenter').addEventListener('change', e => {
+  centerMarker.visible = e.target.checked && state.centerSet;
+  axesGroup.visible = e.target.checked && state.centerSet;
+});
+
+// ═══════════════════════════════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  document.getElementById('tabSimulation').classList.toggle('active', tab === 'simulation');
+  document.getElementById('tabSelector').classList.toggle('active', tab === 'selector');
+  document.getElementById('viewSimulation').classList.toggle('hidden', tab !== 'simulation');
+  document.getElementById('viewSelector').classList.toggle('hidden', tab !== 'selector');
+
+  if (tab === 'selector') {
+    setTimeout(() => resizeSelectorViews(), 50);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════════
+function onResize() {
+  const container = document.getElementById('renderer3d');
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  resizeSelectorViews();
+}
+
+function resizeSelectorViews() {
+  for (const [id, r] of Object.entries(selectorRenderers)) {
+    const container = document.getElementById(id);
+    r.setSize(container.clientWidth, container.clientHeight);
+  }
+}
+
+window.addEventListener('resize', onResize);
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS
+// ═══════════════════════════════════════════════════════════════
+function updateStatus() {
+  const parts = [];
+  if (state.pelvisMesh) parts.push('Pelvis ✓');
+  if (state.femurMesh) parts.push('Femur ✓');
+  if (state.centerSet) parts.push('Center ✓');
+  if (parts.length === 0) {
+    document.getElementById('statusText').textContent = 'Load STL files to begin';
+  } else if (!state.centerSet) {
+    document.getElementById('statusText').textContent = parts.join(' · ') + ' — Set rotation center';
+  } else {
+    document.getElementById('statusText').textContent = parts.join(' · ') + ' — Ready';
+  }
+}
+
+function showLoading(text) {
+  document.getElementById('loadingText').textContent = text;
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+
+  // Render selector views
+  for (const [id, r] of Object.entries(selectorRenderers)) {
+    const cam = selectorCameras[id];
+    const s = selectorScenes[id];
+    r.render(s, cam);
+  }
+
+  // Update ROM map marker if data exists
+  if (state.romData) drawROMMap();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+function init() {
+  const container = document.getElementById('renderer3d');
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+
+  controls = new SimpleOrbitControls(camera, renderer.domElement);
+  animate();
+}
+
+// Wait for layout then init
+setTimeout(init, 100);
+</script>
+</body>
+</html>
