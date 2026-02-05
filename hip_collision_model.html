@@ -1065,17 +1065,12 @@ function updateSelectorViews() {
       s.add(m);
     }
 
-    // Focus camera on FEMUR (proximal part) - not entire scene
+    // Focus camera on FEMUR - not entire scene
     let box = new THREE.Box3();
     if (state.femurMesh && state.femurOrigGeo) {
-      // Use only femur bounding box for framing
+      // Use femur bounding box for framing
       state.femurOrigGeo.computeBoundingBox();
       box = state.femurOrigGeo.boundingBox.clone();
-      
-      // Focus on upper 60% of femur (proximal portion including head)
-      const size = box.getSize(new THREE.Vector3());
-      const minY = box.max.y - size.y * 0.6; // Keep only proximal 60%
-      box.min.y = minY;
     } else {
       // Fallback: use all meshes
       s.children.forEach(c => { if (c.isMesh) box.expandByObject(c); });
@@ -1085,46 +1080,25 @@ function updateSelectorViews() {
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
       
-      // Get viewport aspect ratio to preserve correct proportions
+      // Get viewport aspect ratio
       const container = document.getElementById(id);
-      const aspect = container.clientWidth / container.clientHeight;
+      const aspect = container.clientWidth / container.clientHeight || 1;
       
-      // Determine view dimensions based on which plane we're viewing
-      let viewWidth, viewHeight;
-      if (id === 'vpCoronal') {
-        // XY plane - width is X, height is Y
-        viewWidth = size.x;
-        viewHeight = size.y;
-      } else if (id === 'vpSagittal') {
-        // ZY plane - width is Z, height is Y
-        viewWidth = size.z;
-        viewHeight = size.y;
-      } else {
-        // XZ plane (axial) - width is X, height is Z
-        viewWidth = size.x;
-        viewHeight = size.z;
-      }
-      
-      // Add padding
-      viewWidth *= 1.2;
-      viewHeight *= 1.2;
-      
-      // Adjust for viewport aspect ratio while preserving model proportions
-      const modelAspect = viewWidth / viewHeight;
+      // Use the largest dimension with padding for consistent framing
+      const maxDim = Math.max(size.x, size.y, size.z) * 0.7;
       const cam = selectorCameras[id];
       
-      if (aspect > modelAspect) {
-        // Viewport is wider - fit to height, expand width
-        cam.top = viewHeight / 2;
-        cam.bottom = -viewHeight / 2;
-        cam.left = -viewHeight * aspect / 2;
-        cam.right = viewHeight * aspect / 2;
+      // Set orthographic bounds preserving aspect ratio
+      if (aspect >= 1) {
+        cam.top = maxDim;
+        cam.bottom = -maxDim;
+        cam.left = -maxDim * aspect;
+        cam.right = maxDim * aspect;
       } else {
-        // Viewport is taller - fit to width, expand height
-        cam.left = -viewWidth / 2;
-        cam.right = viewWidth / 2;
-        cam.top = viewWidth / aspect / 2;
-        cam.bottom = -viewWidth / aspect / 2;
+        cam.left = -maxDim;
+        cam.right = maxDim;
+        cam.top = maxDim / aspect;
+        cam.bottom = -maxDim / aspect;
       }
 
       // Position camera looking from direction
