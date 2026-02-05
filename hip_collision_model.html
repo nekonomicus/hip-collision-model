@@ -1100,8 +1100,8 @@ function updateSelectorViews() {
         cam.top = maxDim / aspect;
         cam.bottom = -maxDim / aspect;
       }
-
-      // Position camera looking from direction
+      
+      // Position camera looking at the model center
       cam.position.copy(dir).multiplyScalar(500).add(center);
       cam.lookAt(center);
       cam.updateProjectionMatrix();
