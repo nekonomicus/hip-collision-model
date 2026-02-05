@@ -1279,9 +1279,12 @@ function checkCollision() {
   const v = new THREE.Vector3();
   const closestOnBox = new THREE.Vector3();
 
-  // First pass: bounding box check to find candidate vertices
+  // Sample vertices for performance (like original)
+  const sampleStep = Math.max(1, Math.floor(femurPos.count / 2000));
+  
+  // First pass: bounding box check to find candidate vertices (sampled)
   const candidateIndices = [];
-  for (let i = 0; i < femurPos.count; i++) {
+  for (let i = 0; i < femurPos.count; i += sampleStep) {
     v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
     v.applyMatrix4(femurToPelvis);
     if (expandedBox.containsPoint(v)) {
@@ -1296,13 +1299,16 @@ function checkCollision() {
     }
   }
 
-  // Second pass: raycasting on candidates for precise collision
+  // Second pass: raycasting on candidates for precise collision (limit to 500 rays max)
   if (candidateIndices.length > 0) {
     const raycaster = new THREE.Raycaster();
     const pelvisCenter = new THREE.Vector3();
     pBox.getCenter(pelvisCenter).applyMatrix4(pelvisWorldMatrix);
+    
+    const rayStep = Math.max(1, Math.floor(candidateIndices.length / 500));
 
-    for (const i of candidateIndices) {
+    for (let j = 0; j < candidateIndices.length; j += rayStep) {
+      const i = candidateIndices[j];
       v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
       v.applyMatrix4(state.femurMesh.matrixWorld);
 
