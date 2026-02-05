@@ -720,12 +720,11 @@ const state = {
   femurMesh: null,
   femurOrigGeo: null,
   pelvisOrigGeo: null,
-  femurOrigColors: null,
   centerSet: false,
   center: new THREE.Vector3(),
   angles: { flex: 0, abd: 0, rot: 0 },
   selectorClicks: { coronal: null, sagittal: null, axial: null },
-  collisionResult: { colliding: false, minDist: Infinity, count: 0, collidingIndices: [] },
+  collisionResult: { colliding: false, minDist: Infinity, count: 0 },
   romData: null,
   scanning: false,
   scanCancelled: false,
@@ -951,21 +950,8 @@ function loadSTL(event, type) {
       document.getElementById('pelvisName').textContent = file.name;
     } else {
       if (state.femurMesh) femurPivot.remove(state.femurMesh);
-      
-      // Initialize vertex colors for collision highlighting
-      const vertexCount = geometry.attributes.position.count;
-      const colors = new Float32Array(vertexCount * 3);
-      const femurColor = new THREE.Color(0xe8c170);
-      for (let i = 0; i < vertexCount; i++) {
-        colors[i * 3] = femurColor.r;
-        colors[i * 3 + 1] = femurColor.g;
-        colors[i * 3 + 2] = femurColor.b;
-      }
-      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      state.femurOrigColors = colors.slice(); // Store original colors
-      
       const mat = new THREE.MeshPhongMaterial({
-        vertexColors: true,
+        color: 0xe8c170,
         specular: 0x333322,
         shininess: 40,
         side: THREE.DoubleSide,
@@ -1053,7 +1039,7 @@ function updateSelectorViews() {
     if (state.pelvisMesh) {
       const m = new THREE.Mesh(
         state.pelvisOrigGeo.clone(),
-        new THREE.MeshPhongMaterial({ color: 0xa8b4c8, side: THREE.DoubleSide, opacity: 0.3, transparent: true })
+        new THREE.MeshPhongMaterial({ color: 0xa8b4c8, side: THREE.DoubleSide })
       );
       s.add(m);
     }
@@ -1065,43 +1051,18 @@ function updateSelectorViews() {
       s.add(m);
     }
 
-    // Focus camera on FEMUR - not entire scene
-    let box = new THREE.Box3();
-    if (state.femurMesh && state.femurOrigGeo) {
-      // Use femur bounding box for framing
-      state.femurOrigGeo.computeBoundingBox();
-      box = state.femurOrigGeo.boundingBox.clone();
-    } else {
-      // Fallback: use all meshes
-      s.children.forEach(c => { if (c.isMesh) box.expandByObject(c); });
-    }
-    
+    // Fit camera
+    const box = new THREE.Box3();
+    s.children.forEach(c => { if (c.isMesh) box.expandByObject(c); });
     if (!box.isEmpty()) {
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      
-      // Get viewport aspect ratio
-      const container = document.getElementById(id);
-      const aspect = container.clientWidth / container.clientHeight || 1;
-      
-      // Use the largest dimension with padding for consistent framing
-      const maxDim = Math.max(size.x, size.y, size.z) * 0.7;
+      const maxDim = Math.max(size.x, size.y, size.z) * 0.6;
       const cam = selectorCameras[id];
-      
-      // Set orthographic bounds preserving aspect ratio
-      if (aspect >= 1) {
-        cam.top = maxDim;
-        cam.bottom = -maxDim;
-        cam.left = -maxDim * aspect;
-        cam.right = maxDim * aspect;
-      } else {
-        cam.left = -maxDim;
-        cam.right = maxDim;
-        cam.top = maxDim / aspect;
-        cam.bottom = -maxDim / aspect;
-      }
-      
-      // Position camera looking at the model center
+      cam.left = -maxDim; cam.right = maxDim;
+      cam.top = maxDim; cam.bottom = -maxDim;
+
+      // Position camera looking from direction
       cam.position.copy(dir).multiplyScalar(500).add(center);
       cam.lookAt(center);
       cam.updateProjectionMatrix();
@@ -1241,134 +1202,119 @@ function applyFemurRotation(flexDeg, abdDeg, rotDeg) {
   const rotRad = THREE.MathUtils.degToRad(rotDeg);
 
   // Clinical rotation order: flexion (around X), then abduction (around Z), then internal rotation (around Y)
-  // Euler order 'XZY' means: apply X first, Z second, Y third
+  // Euler order 'XZY' applies: X first, Z second, Y third
   const euler = new THREE.Euler(flexRad, rotRad, abdRad, 'XZY');
   femurPivot.rotation.copy(euler);
 }
 
-// Collision detection with vertex-level highlighting
+// Simplified collision detection using bounding sphere sampling
 function checkCollision() {
   if (!state.pelvisMesh || !state.femurMesh || !state.centerSet) {
-    updateCollisionUI(false, Infinity, 0, []);
+    updateCollisionUI(false, Infinity, 0);
     return false;
   }
 
+  // Get world-space positions of femur vertices (sampled)
   const femurGeo = state.femurMesh.geometry;
+  const pelvisGeo = state.pelvisMesh.geometry;
+
   const femurPos = femurGeo.attributes.position;
-  const femurColors = femurGeo.attributes.color;
+  const pelvisPos = pelvisGeo.attributes.position;
 
-  // Reset colors to original
-  if (state.femurOrigColors && femurColors) {
-    for (let i = 0; i < femurColors.count * 3; i++) {
-      femurColors.array[i] = state.femurOrigColors[i];
-    }
-  }
-
+  // Build pelvis bounding structures
+  // Use simple raycasting: sample femur surface points and check if inside pelvis
+  const femurWorldMatrix = state.femurMesh.matrixWorld;
   const pelvisWorldMatrix = state.pelvisMesh.matrixWorld;
   const pelvisInverse = new THREE.Matrix4().copy(pelvisWorldMatrix).invert();
-  const femurToPelvis = new THREE.Matrix4().copy(pelvisInverse).multiply(state.femurMesh.matrixWorld);
 
+  // Transform femur-to-pelvis space matrix
+  const femurToPelvis = new THREE.Matrix4().copy(pelvisInverse).multiply(femurWorldMatrix);
+
+  // Sample femur vertices in pelvis space and check against pelvis bounding box
   state.pelvisMesh.geometry.computeBoundingBox();
   const pBox = state.pelvisMesh.geometry.boundingBox;
 
-  const proximity = 2.0;
+  // Expand bounding box slightly for proximity detection
+  const proximity = 2.0; // mm threshold
   const expandedBox = pBox.clone().expandByScalar(proximity);
 
+  let insideCount = 0;
   let minDist = Infinity;
-  const collidingIndices = [];
+  const step = Math.max(1, Math.floor(femurPos.count / 2000)); // Sample ~2000 points
+
   const v = new THREE.Vector3();
   const closestOnBox = new THREE.Vector3();
 
-  // Sample vertices for performance (like original)
-  const sampleStep = Math.max(1, Math.floor(femurPos.count / 2000));
-  
-  // First pass: bounding box check to find candidate vertices (sampled)
-  const candidateIndices = [];
-  for (let i = 0; i < femurPos.count; i += sampleStep) {
+  for (let i = 0; i < femurPos.count; i += step) {
     v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
     v.applyMatrix4(femurToPelvis);
+
+    // Check if inside expanded bounding box
     if (expandedBox.containsPoint(v)) {
-      candidateIndices.push(i);
+      // More precise: distance to box surface
       pBox.clampPoint(v, closestOnBox);
       const dist = v.distanceTo(closestOnBox);
+
       if (pBox.containsPoint(v)) {
-        minDist = Math.min(minDist, -dist);
+        insideCount++;
+        minDist = Math.min(minDist, -dist); // Negative = penetration
       } else {
         minDist = Math.min(minDist, dist);
       }
     }
   }
 
-  // Second pass: raycasting on candidates for precise collision (limit to 500 rays max)
-  if (candidateIndices.length > 0) {
+  // More precise collision: use raycasting on sampled points
+  // For performance, use the bounding box approach as primary,
+  // then refine with mesh-based raycasting on nearby points
+  if (insideCount > 0 || minDist < proximity) {
+    // Refine with actual mesh raycasting
     const raycaster = new THREE.Raycaster();
-    const pelvisCenter = new THREE.Vector3();
-    pBox.getCenter(pelvisCenter).applyMatrix4(pelvisWorldMatrix);
-    
-    const rayStep = Math.max(1, Math.floor(candidateIndices.length / 500));
+    let refinedCollisions = 0;
+    const testStep = Math.max(1, Math.floor(femurPos.count / 500));
 
-    for (let j = 0; j < candidateIndices.length; j += rayStep) {
-      const i = candidateIndices[j];
+    for (let i = 0; i < femurPos.count; i += testStep) {
       v.set(femurPos.getX(i), femurPos.getY(i), femurPos.getZ(i));
       v.applyMatrix4(state.femurMesh.matrixWorld);
 
-      const dir = pelvisCenter.clone().sub(v).normalize();
+      // Cast ray from this point toward pelvis center
+      const dir = new THREE.Vector3();
+      pBox.getCenter(dir).applyMatrix4(pelvisWorldMatrix);
+      dir.sub(v).normalize();
+
       raycaster.set(v, dir);
       raycaster.far = proximity * 3;
       const hits = raycaster.intersectObject(state.pelvisMesh);
-      
-      if (hits.length >= 2) {
-        // Point is inside the pelvis mesh (collision)
-        collidingIndices.push(i);
-        minDist = Math.min(minDist, -hits[0].distance);
-      } else if (hits.length === 1 && hits[0].distance < proximity) {
-        // Very close to surface
-        collidingIndices.push(i);
+      if (hits.length > 0) {
+        refinedCollisions++;
         minDist = Math.min(minDist, hits[0].distance);
+        if (hits.length >= 2) {
+          // Point is likely inside mesh
+          minDist = Math.min(minDist, -hits[0].distance);
+        }
       }
     }
+
+    const colliding = refinedCollisions > 3;
+    updateCollisionUI(colliding, Math.abs(minDist), refinedCollisions);
+    return colliding;
   }
 
-  // Highlight only colliding vertices (and neighboring vertices in same triangles)
-  if (collidingIndices.length > 0 && femurColors) {
-    const collisionColor = new THREE.Color(0xef4444);
-    const highlightSet = new Set(collidingIndices);
-    
-    // Also highlight neighboring vertices (same triangle)
-    for (const idx of collidingIndices) {
-      const triStart = Math.floor(idx / 3) * 3;
-      highlightSet.add(triStart);
-      highlightSet.add(triStart + 1);
-      highlightSet.add(triStart + 2);
-    }
-    
-    for (const i of highlightSet) {
-      if (i < femurColors.count) {
-        femurColors.array[i * 3] = collisionColor.r;
-        femurColors.array[i * 3 + 1] = collisionColor.g;
-        femurColors.array[i * 3 + 2] = collisionColor.b;
-      }
-    }
-    femurColors.needsUpdate = true;
-  } else if (femurColors) {
-    femurColors.needsUpdate = true;
-  }
-
-  const colliding = collidingIndices.length > 3;
-  updateCollisionUI(colliding, Math.abs(minDist), collidingIndices.length, collidingIndices);
-  return colliding;
+  updateCollisionUI(false, minDist === Infinity ? NaN : minDist, 0);
+  return false;
 }
 
-function updateCollisionUI(colliding, minDist, count, collidingIndices = []) {
-  state.collisionResult = { colliding, minDist, count, collidingIndices };
+function updateCollisionUI(colliding, minDist, count) {
+  state.collisionResult = { colliding, minDist, count };
   const ind = document.getElementById('collisionIndicator');
   if (colliding) {
     ind.textContent = '⚠ COLLISION DETECTED';
     ind.className = 'collision-indicator colliding';
-    // Don't set emissive on entire mesh - we use vertex colors now
+    if (state.femurMesh) state.femurMesh.material.emissive.setHex(0x331100);
   } else {
     ind.textContent = 'NO COLLISION';
     ind.className = 'collision-indicator safe';
+    if (state.femurMesh) state.femurMesh.material.emissive.setHex(0x000000);
   }
   document.getElementById('minDist').textContent = isNaN(minDist) ? '—' : minDist.toFixed(1) + ' mm';
   document.getElementById('minDist').className = 'info-item-value ' + (colliding ? 'collision' : 'safe');
@@ -1435,39 +1381,28 @@ async function scanROM() {
   const totalSteps = ((flexRange[1] - flexRange[0]) / step + 1) * ((rotRange[1] - rotRange[0]) / step + 1);
   let currentStep = 0;
 
-  try {
-    for (let f = flexRange[0]; f <= flexRange[1]; f += step) {
-      if (state.scanCancelled) break;
-      
-      const row = [];
-      for (let r = rotRange[0]; r <= rotRange[1]; r += step) {
-        if (state.scanCancelled) break;
-        
-        applyFemurRotation(f, abd, r);
-        scene.updateMatrixWorld(true);
+  for (let f = flexRange[0]; f <= flexRange[1] && !state.scanCancelled; f += step) {
+    const row = [];
+    for (let r = rotRange[0]; r <= rotRange[1] && !state.scanCancelled; r += step) {
+      applyFemurRotation(f, abd, r);
+      scene.updateMatrixWorld(true);
 
-        const colliding = quickCollisionCheck();
-        row.push(colliding ? 1 : 0);
-        currentStep++;
-        progFill.style.width = (currentStep / totalSteps * 100) + '%';
+      const colliding = quickCollisionCheck();
+      row.push(colliding ? 1 : 0);
+      currentStep++;
+      progFill.style.width = (currentStep / totalSteps * 100) + '%';
 
-        // Yield to UI more frequently for responsiveness
-        if (currentStep % 10 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-      }
-      if (!state.scanCancelled) {
-        romMap.push(row);
+      if (currentStep % 10 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0)); // Yield to UI
       }
     }
+    if (!state.scanCancelled) romMap.push(row);
+  }
 
-    if (!state.scanCancelled && romMap.length > 0) {
-      state.romData = { map: romMap, flexRange, rotRange, step, abd };
-      drawROMMap();
-      closeBtn.classList.remove('hidden');
-    }
-  } catch (err) {
-    console.error('ROM scan error:', err);
+  if (!state.scanCancelled && romMap.length > 0) {
+    state.romData = { map: romMap, flexRange, rotRange, step, abd };
+    drawROMMap();
+    closeBtn.classList.remove('hidden');
   }
 
   // Restore current angle
@@ -1486,8 +1421,7 @@ function cancelScan() {
 }
 
 function closeROMMap() {
-  const canvas = document.getElementById('romCanvas');
-  canvas.style.display = 'none';
+  document.getElementById('romCanvas').style.display = 'none';
   state.romData = null;
   document.getElementById('btnCloseROM').classList.add('hidden');
 }
@@ -1520,7 +1454,6 @@ function quickCollisionCheck() {
 
 function drawROMMap() {
   if (!state.romData) return;
-  
   const canvas = document.getElementById('romCanvas');
   canvas.style.display = 'block';
   const ctx = canvas.getContext('2d');
@@ -1694,10 +1627,9 @@ function animate() {
     r.render(s, cam);
   }
 
-  // Update ROM map marker only if angles changed (not every frame)
+  // Update ROM map marker only when angles change
   if (state.romData && (
     lastRomAngles.flex !== state.angles.flex ||
-    lastRomAngles.abd !== state.angles.abd ||
     lastRomAngles.rot !== state.angles.rot
   )) {
     lastRomAngles = { ...state.angles };
