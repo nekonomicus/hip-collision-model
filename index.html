@@ -918,6 +918,114 @@ function parseASCIISTL(buffer) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// MESH DECIMATION (vertex clustering for performance)
+// ═══════════════════════════════════════════════════════════════
+function decimateGeometry(geometry, targetTriangles = 50000) {
+  const positions = geometry.attributes.position.array;
+  const triangleCount = positions.length / 9;
+  
+  if (triangleCount <= targetTriangles) {
+    return geometry; // No decimation needed
+  }
+  
+  const ratio = targetTriangles / triangleCount;
+  const gridSize = Math.cbrt(1 / ratio) * 2; // Adaptive grid size
+  
+  // Compute bounding box
+  geometry.computeBoundingBox();
+  const bbox = geometry.boundingBox;
+  const min = bbox.min;
+  const size = bbox.getSize(new THREE.Vector3());
+  
+  // Grid cell size
+  const cellSize = Math.max(size.x, size.y, size.z) / (50 * Math.sqrt(ratio));
+  
+  // Vertex clustering: map each vertex to a grid cell
+  const vertexMap = new Map(); // cellKey -> {pos: summed position, normal: summed normal, count}
+  const newTriangles = [];
+  
+  function getCellKey(x, y, z) {
+    const cx = Math.floor((x - min.x) / cellSize);
+    const cy = Math.floor((y - min.y) / cellSize);
+    const cz = Math.floor((z - min.z) / cellSize);
+    return `${cx},${cy},${cz}`;
+  }
+  
+  // First pass: accumulate vertices into cells
+  const hasNormals = geometry.attributes.normal;
+  const normals = hasNormals ? geometry.attributes.normal.array : null;
+  
+  for (let i = 0; i < positions.length; i += 3) {
+    const key = getCellKey(positions[i], positions[i+1], positions[i+2]);
+    if (!vertexMap.has(key)) {
+      vertexMap.set(key, { 
+        pos: [0, 0, 0], 
+        normal: [0, 0, 0], 
+        count: 0,
+        index: vertexMap.size 
+      });
+    }
+    const cell = vertexMap.get(key);
+    cell.pos[0] += positions[i];
+    cell.pos[1] += positions[i+1];
+    cell.pos[2] += positions[i+2];
+    if (normals) {
+      cell.normal[0] += normals[i];
+      cell.normal[1] += normals[i+1];
+      cell.normal[2] += normals[i+2];
+    }
+    cell.count++;
+  }
+  
+  // Average the positions and normals
+  for (const cell of vertexMap.values()) {
+    cell.pos[0] /= cell.count;
+    cell.pos[1] /= cell.count;
+    cell.pos[2] /= cell.count;
+    if (normals) {
+      const len = Math.sqrt(cell.normal[0]**2 + cell.normal[1]**2 + cell.normal[2]**2) || 1;
+      cell.normal[0] /= len;
+      cell.normal[1] /= len;
+      cell.normal[2] /= len;
+    }
+  }
+  
+  // Second pass: rebuild triangles using clustered vertices
+  const newPositions = [];
+  const newNormals = [];
+  
+  for (let t = 0; t < triangleCount; t++) {
+    const i = t * 9;
+    const k1 = getCellKey(positions[i], positions[i+1], positions[i+2]);
+    const k2 = getCellKey(positions[i+3], positions[i+4], positions[i+5]);
+    const k3 = getCellKey(positions[i+6], positions[i+7], positions[i+8]);
+    
+    // Skip degenerate triangles (all vertices in same cell or two in same)
+    if (k1 === k2 || k2 === k3 || k1 === k3) continue;
+    
+    const v1 = vertexMap.get(k1);
+    const v2 = vertexMap.get(k2);
+    const v3 = vertexMap.get(k3);
+    
+    newPositions.push(...v1.pos, ...v2.pos, ...v3.pos);
+    if (normals) {
+      newNormals.push(...v1.normal, ...v2.normal, ...v3.normal);
+    }
+  }
+  
+  const decimatedGeo = new THREE.BufferGeometry();
+  decimatedGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newPositions), 3));
+  if (newNormals.length > 0) {
+    decimatedGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(newNormals), 3));
+  }
+  decimatedGeo.computeBoundingSphere();
+  decimatedGeo.computeBoundingBox();
+  
+  console.log(`Decimated: ${triangleCount} -> ${newPositions.length / 9} triangles`);
+  return decimatedGeo;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // FILE LOADING
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('pelvisInput').addEventListener('change', e => loadSTL(e, 'pelvis'));
@@ -930,7 +1038,9 @@ function loadSTL(event, type) {
   showLoading(`Loading ${type}...`);
   const reader = new FileReader();
   reader.onload = function(e) {
-    const geometry = parseSTL(e.target.result);
+    let geometry = parseSTL(e.target.result);
+    // Decimate for performance (target ~50k triangles for display, keep original for precise operations)
+    geometry = decimateGeometry(geometry, 50000);
     geometry.computeVertexNormals();
 
     if (type === 'pelvis') {
